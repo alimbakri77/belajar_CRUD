@@ -1,43 +1,67 @@
-'use strict';
+const express = require("express");
+const cors = require("cors");
+const { Sequelize, DataTypes } = require("sequelize");
+const UserModel = require("./models/user");
+const PostModel = require("./models/post");
 
-const fs = require('fs');
-const path = require('path');
-const Sequelize = require('sequelize');
-const process = require('process');
-const basename = path.basename(__filename);
-const env = process.env.NODE_ENV || 'development';
-const config = require(__dirname + '/../config/config.json')[env];
-const db = {};
+const app = express();
+app.use(cors());
+app.use(express.json()); // agar bisa menerima JSON body
 
-let sequelize;
-if (config.use_env_variable) {
-  sequelize = new Sequelize(process.env[config.use_env_variable], config);
-} else {
-  sequelize = new Sequelize(config.database, config.username, config.password, config);
-}
+// ===== Database =====
+const sequelize = new Sequelize({
+  dialect: "sqlite",
+  storage: "database.sqlite" // file database SQLite
+});
 
-fs
-  .readdirSync(__dirname)
-  .filter(file => {
-    return (
-      file.indexOf('.') !== 0 &&
-      file !== basename &&
-      file.slice(-3) === '.js' &&
-      file.indexOf('.test.js') === -1
-    );
-  })
-  .forEach(file => {
-    const model = require(path.join(__dirname, file))(sequelize, Sequelize.DataTypes);
-    db[model.name] = model;
-  });
+// ===== Models =====
+const User = UserModel(sequelize, DataTypes);
+const Post = PostModel(sequelize, DataTypes);
 
-Object.keys(db).forEach(modelName => {
-  if (db[modelName].associate) {
-    db[modelName].associate(db);
+// ===== Relasi =====
+User.hasMany(Post, { foreignKey: "userId" });
+Post.belongsTo(User, { foreignKey: "userId" });
+
+// ===== Routes User =====
+app.get("/users", async (req, res) => {
+  try {
+    const users = await User.findAll({ include: Post });
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
-db.sequelize = sequelize;
-db.Sequelize = Sequelize;
+app.post("/users", async (req, res) => {
+  try {
+    const user = await User.create(req.body);
+    res.json(user);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
 
-module.exports = db;
+// ===== Routes Post =====
+app.get("/posts", async (req, res) => {
+  try {
+    const posts = await Post.findAll({ include: User });
+    res.json(posts);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/posts", async (req, res) => {
+  try {
+    const post = await Post.create(req.body);
+    res.json(post);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ===== Sync DB & Start Server =====
+sequelize.sync({ force: true }).then(() => {
+  console.log("Database synced");
+  app.listen(3001, () => console.log("Server running at http://localhost:3001"));
+});
